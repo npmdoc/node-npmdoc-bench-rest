@@ -1,0 +1,237 @@
+<html><head></head><body><div class="apidocDiv">
+<style>
+/*csslint
+*/
+.apidocDiv {
+    background: #fff;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.apidocDiv a[href] {
+    color: #33f;
+    font-weight: bold;
+    text-decoration: none;
+}
+.apidocDiv a[href]:hover {
+    text-decoration: underline;
+}
+.apidocCodeCommentSpan {
+    background: #bbf;
+    color: #000;
+    display: block;
+}
+.apidocCodeKeywordSpan {
+    color: #d00;
+    font-weight: bold;
+}
+.apidocCodePre {
+    background: #eef;
+    border: 1px solid;
+    color: #777;
+    padding: 5px;
+    white-space: pre-wrap;
+}
+.apidocFooterDiv {
+    margin-top: 20px;
+    text-align: center;
+}
+.apidocModuleLi {
+    margin-top: 10px;
+}
+.apidocSectionDiv {
+    border-top: 1px solid;
+    margin-top: 20px;
+}
+.apidocSignatureSpan {
+    color: #777;
+    font-weight: bold;
+}
+</style>
+<h1>api documentation for
+    <a href="https://github.com/jeffbski/bench-rest#readme">bench-rest (v1.2.4)</a>
+</h1>
+<h4>bench-rest - benchmark REST (HTTP/HTTPS) API's. Node.js client module for easy load testing / benchmarking REST API' using a simple structure/DSL can create REST flows with setup and teardown and returns (measured) metrics.</h4>
+<div class="apidocSectionDiv"><a href="#apidoc.tableOfContents" id="apidoc.tableOfContents"><h1>table of contents</h1></a><ol>
+
+    <li class="apidocModuleLi"><a href="#apidoc.module.bench-rest">module bench-rest</a><ol>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bench-rest.bench-rest">
+            function <span class="apidocSignatureSpan"></span>bench-rest
+            <span class="apidocSignatureSpan">(flow, runOptions)</span>
+            </a>
+
+        </li>
+
+        <li>
+
+            <a class="apidocElementLiA" href="#apidoc.element.bench-rest.toString">
+            function <span class="apidocSignatureSpan">bench-rest.</span>toString
+            <span class="apidocSignatureSpan">()</span>
+            </a>
+
+        </li>
+
+    </ol></li>
+
+</ol></div>
+
+<div class="apidocSectionDiv">
+<h1><a href="#apidoc.module.bench-rest" id="apidoc.module.bench-rest">module bench-rest</a></h1>
+
+
+    <h2>
+        <a href="#apidoc.element.bench-rest.bench-rest" id="apidoc.element.bench-rest.bench-rest">
+        function <span class="apidocSignatureSpan"></span>bench-rest
+        <span class="apidocSignatureSpan">(flow, runOptions)</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">function benchmark(flow, runOptions) {
+  if (!runOptions || !runOptions.iterations || !runOptions.limit) {
+    throw new Error('benchmark runOptions requires iterations and limit properties');
+  }
+  if (!runOptions.prealloc) runOptions.prealloc = 100000; // default
+  if (runOptions.prealloc &gt; runOptions.iterations) runOptions.prealloc = runOptions.iterations; // cap at iterations
+
+  flow = ensureFlowProperties(flow);
+  var emitter = new EventEmitter();
+  var errorCount = 0;
+  var index = 0;
+  var concurrentCount = 0; // concurrent tasks at any point in time
+  var stats = measured.createCollection();
+  var elapsed_timer = stats.timer('totalElapsed').start();
+
+  function emitProgress() {
+    var statsObj = stats.toJSON();
+    var percent = (statsObj.main) ? Math.round(statsObj.main.meter.count * 100 / runOptions.iterations) : 0;
+    var ips = (statsObj.main) ? Math.round(statsObj.main.meter.currentRate) : 0; // current iterations per second
+    emitter.emit('progress', statsObj, percent, concurrentCount, ips);
+  }
+  var progressTimer = (runOptions.progress) ? setInterval(emitProgress, runOptions.progress) : null;
+
+  function handleError(err, ctxName, exit) {
+    errorCount++;
+    emitter.emit('error', err, ctxName);
+    if (exit) {
+      shutdown();
+      emitter.emit('end', stats, errorCount);
+    }
+  }
+
+  http.globalAgent.maxSockets = runOptions.limit;
+  https.globalAgent.maxSockets = runOptions.limit;
+
+  function run(task, cb) {
+    concurrentCount += 1;
+    task.env.group = 'beforeMain';
+    performActions(task.env, task.beforeMain, function (err) {
+      if (err) {
+        handleError(err, 'beforeMain');
+        concurrentCount -= 1;
+        return cb(err);
+      }
+      var req_timer = stats.timer('main').start();
+      task.env.group = 'main';
+      performActions(task.env, task.main, function (err) {
+        req_timer.end();
+        if (err) {
+          handleError(err, 'main');
+        }
+        task.env.group = 'afterMain';
+        performActions(task.env, task.afterMain, function (err) {
+          if (err) {
+            handleError(err, 'afterMain');
+            concurrentCount -= 1;
+            return cb(err);
+          }
+          concurrentCount -= 1;
+          cb();
+        });
+      });
+    });
+    checkIfNeedToPush();
+  }
+
+  function shutdown() {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+    stats.end();
+  }
+
+  var queue = async.queue(run, runOptions.limit);
+
+  queue.drain = function () {
+    performActions({ group: 'after', user: runOptions.user, password: runOptions.password  }, flow.after, function (err) {
+      elapsed_timer.end();
+      if (err) {
+        handleError(err, 'after');
+      }
+      shutdown();
+      var statsObj = stats.toJSON(); // actually materializes object
+      statsObj.totalElapsed = statsObj.totalElapsed.histogram.max; // simplify the elapsed to single number
+      emitter.emit('end', statsObj, errorCount);
+    });
+  };
+
+  function pushOnQueue() {
+    var tokens = { INDEX: index };
+    queue.push({
+      env: { index: index, jar: request.jar(), user: runOptions.user, password: runOptions.password, etags: {}, iterCtx: {}, stats
+: stats },
+      beforeMain: bindSubtituteFnsWithTokens(flow.beforeMain, tokens),
+      main: bindSubtituteFnsWithTokens(flow.main, tokens),
+      afterMain: bindSubtituteFnsWithTokens(flow.afterMain, tokens)
+    });
+    index += 1;
+  }
+
+  function checkIfNeedToPush() {
+    if (index &lt; runOptions.iterations) {
+      pushOnQueue();
+    }
+  }
+
+  process.nextTick(function () { // allow event handlers to be hooked up before starting
+
+    performActions({ group: 'before', user: runOptions.user, password: runOptions.password }, flow.before, function (err) {
+      if (err) {
+        return handleError(err, 'before', true);  // exit if fails here
+      }
+
+      // create optimized substitution fns for each flow where needed
+      flow.beforeMain = substituteFnWhereNeeded(flow.beforeMain);
+      flow.main = substituteFnWhereNeeded(flow.main);
+      flow.afterMain = substituteFnWhereNeeded(flow.afterMain);
+
+      t ...</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+
+    <h2>
+        <a href="#apidoc.element.bench-rest.toString" id="apidoc.element.bench-rest.toString">
+        function <span class="apidocSignatureSpan">bench-rest.</span>toString
+        <span class="apidocSignatureSpan">()</span>
+        </a>
+    </h2>
+    <ul>
+    <li>description and source-code<pre class="apidocCodePre">toString = function () {
+    return text;
+}</pre></li>
+    <li>example usage<pre class="apidocCodePre">n/a</pre></li>
+    </ul>
+
+
+</div>
+
+<div class="apidocFooterDiv">
+    [ this document was created with
+    <a href="https://github.com/kaizhu256/node-utility2" target="_blank">utility2</a>
+    ]
+</div>
+</div>
+</body></html>
