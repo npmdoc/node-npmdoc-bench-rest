@@ -1,6 +1,6 @@
 # npmdoc-bench-rest
 
-#### api documentation for  [bench-rest (v1.2.4)](https://github.com/jeffbski/bench-rest#readme)  [![npm package](https://img.shields.io/npm/v/npmdoc-bench-rest.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-bench-rest) [![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-bench-rest.svg)](https://travis-ci.org/npmdoc/node-npmdoc-bench-rest)
+#### basic api documentation for  [bench-rest (v1.2.4)](https://github.com/jeffbski/bench-rest#readme)  [![npm package](https://img.shields.io/npm/v/npmdoc-bench-rest.svg?style=flat-square)](https://www.npmjs.org/package/npmdoc-bench-rest) [![travis-ci.org build-status](https://api.travis-ci.org/npmdoc/node-npmdoc-bench-rest.svg)](https://travis-ci.org/npmdoc/node-npmdoc-bench-rest)
 
 #### bench-rest - benchmark REST (HTTP/HTTPS) API's. Node.js client module for easy load testing / benchmarking REST API' using a simple structure/DSL can create REST flows with setup and teardown and returns (measured) metrics.
 
